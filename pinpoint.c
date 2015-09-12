@@ -200,7 +200,6 @@ main (int    argc,
   context = g_option_context_new ("- Presentations made easy");
   g_option_context_add_main_entries (context, entries, NULL);
   g_option_context_add_group (context, clutter_get_option_group_without_init ());
-  g_option_context_add_group (context, cogl_get_option_group ());
   if (!g_option_context_parse (context, &argc, &argv, &error))
     {
       g_print ("option parsing failed: %s\n", error->message);
@@ -225,9 +224,11 @@ main (int    argc,
         }
     }
 
-  gtk_clutter_init (&argc, &argv);
+  if (!gtk_clutter_init (&argc, &argv))
+    return EXIT_FAILURE;
 #ifdef USE_CLUTTER_GST
-  clutter_gst_init (&argc, &argv);
+  if (!clutter_gst_init (&argc, &argv))
+    return EXIT_FAILURE;
 #endif
 #ifdef USE_DAX
   dax_init (&argc, &argv);

@@ -364,8 +364,8 @@ static gboolean commandline_cancel_cb (ClutterActor *actor,
   PinPointPoint *point = pp_slidep->data;
 
   if (clutter_event_type (event) == CLUTTER_KEY_PRESS &&
-      (clutter_event_get_key_symbol (event) == CLUTTER_Escape ||
-       clutter_event_get_key_symbol (event) == CLUTTER_Tab))
+      (clutter_event_get_key_symbol (event) == CLUTTER_KEY_Escape ||
+       clutter_event_get_key_symbol (event) == CLUTTER_KEY_Tab))
     {
       clutter_actor_grab_key_focus (renderer->stage);
       pp_actor_animate (renderer->commandline,
@@ -1356,24 +1356,24 @@ key_pressed (ClutterActor    *actor,
   if (event) /* There is no event for the first triggering */
   switch (clutter_event_get_key_symbol (event))
     {
-      case CLUTTER_Left:
-      case CLUTTER_Up:
-      case CLUTTER_BackSpace:
-      case CLUTTER_Prior:
+      case CLUTTER_KEY_Left:
+      case CLUTTER_KEY_Up:
+      case CLUTTER_KEY_BackSpace:
+      case CLUTTER_KEY_Prior:
         prev_slide (renderer);
         break;
-      case CLUTTER_Right:
-      case CLUTTER_space:
-      case CLUTTER_Next:
-      case CLUTTER_Down:
+      case CLUTTER_KEY_Right:
+      case CLUTTER_KEY_space:
+      case CLUTTER_KEY_Next:
+      case CLUTTER_KEY_Down:
         next_slide (renderer);
         break;
-      case CLUTTER_Escape:
-      case CLUTTER_Q:
-      case CLUTTER_q:
+      case CLUTTER_KEY_Escape:
+      case CLUTTER_KEY_Q:
+      case CLUTTER_KEY_q:
         g_application_quit (G_APPLICATION (renderer->application));
         break;
-      case CLUTTER_F1:
+      case CLUTTER_KEY_F1:
         {
           gboolean was_fullscreen =
             pp_get_fullscreen (renderer,
@@ -1385,15 +1385,15 @@ key_pressed (ClutterActor    *actor,
                                was_fullscreen);
         }
         break;
-      case CLUTTER_F2:
+      case CLUTTER_KEY_F2:
         if (renderer->autoadvance)
           renderer->autoadvance = FALSE;
         else
           renderer->autoadvance = TRUE;
         break;
-      case CLUTTER_F11:
-        case CLUTTER_F:
-        case CLUTTER_f:
+      case CLUTTER_KEY_F11:
+      case CLUTTER_KEY_F:
+      case CLUTTER_KEY_f:
         {
           gboolean was_fullscreen =
             pp_get_fullscreen (renderer,
@@ -1409,22 +1409,22 @@ key_pressed (ClutterActor    *actor,
           pp_inhibit (renderer, !was_fullscreen);
         }
         break;
-      case CLUTTER_Return:
+      case CLUTTER_KEY_Return:
         action_slide (renderer);
         break;
-      case CLUTTER_Tab:
+      case CLUTTER_KEY_Tab:
         activate_commandline (renderer);
         break;
-      case CLUTTER_b:
-      case CLUTTER_B:
-        if (CLUTTER_ACTOR_IS_VISIBLE (renderer->curtain))
+      case CLUTTER_KEY_b:
+      case CLUTTER_KEY_B:
+        if (clutter_actor_is_visible (renderer->curtain))
           clutter_actor_hide (renderer->curtain);
         else
           clutter_actor_show (renderer->curtain);
         break;
-      case CLUTTER_H:
-      case CLUTTER_h:
-      case CLUTTER_Home:
+      case CLUTTER_KEY_H:
+      case CLUTTER_KEY_h:
+      case CLUTTER_KEY_Home:
         start (NULL, NULL, renderer);
         break;
     }

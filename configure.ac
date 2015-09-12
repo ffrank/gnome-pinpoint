@@ -27,7 +27,7 @@ AC_PROG_SED
 PKG_PROG_PKG_CONFIG
 AC_HEADER_STDC
 
-PINPOINT_DEPS="clutter-gtk-1.0 >= 1.6 clutter-1.0 >= 1.12 gio-2.0 >= 2.26 cairo-pdf pangocairo gdk-pixbuf-2.0"
+PINPOINT_DEPS="clutter-gtk-1.0 >= 1.6 clutter-1.0 >= 1.23.7 gio-2.0 >= 2.26 cairo-pdf pangocairo gdk-pixbuf-2.0"
 
 AS_COMPILER_FLAGS([MAINTAINER_CFLAGS], [-Wall])
 AC_SUBST(MAINTAINER_CFLAGS)
