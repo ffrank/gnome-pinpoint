@@ -27,15 +27,10 @@ AC_PROG_SED
 PKG_PROG_PKG_CONFIG
 AC_HEADER_STDC
 
-PINPOINT_DEPS="clutter-1.0 >= 1.12 gio-2.0 >= 2.26 cairo-pdf pangocairo gdk-pixbuf-2.0"
+PINPOINT_DEPS="clutter-gtk-1.0 >= 1.6 clutter-1.0 >= 1.12 gio-2.0 >= 2.26 cairo-pdf pangocairo gdk-pixbuf-2.0"
 
 AS_COMPILER_FLAGS([MAINTAINER_CFLAGS], [-Wall])
 AC_SUBST(MAINTAINER_CFLAGS)
-
-# Do we have clutter compiled for x11?
-PKG_CHECK_EXISTS([clutter-x11-1.0],
-		 [AC_DEFINE([HAVE_CLUTTER_X11], [1],
-			    [Whether clutter is compiled for x11])])
 
 # PDF output support
 AC_ARG_ENABLE([pdf],

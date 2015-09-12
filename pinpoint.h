@@ -28,7 +28,7 @@
 #include "config.h"
 #endif
 
-#include <clutter/clutter.h>
+#include <clutter-gtk/clutter-gtk.h>
 
 typedef struct _PinPointPoint    PinPointPoint;
 typedef struct _PinPointRenderer PinPointRenderer;

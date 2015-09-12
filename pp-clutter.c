@@ -27,9 +27,6 @@
 
 #include "pinpoint.h"
 
-#if HAVE_CLUTTER_X11
-#include <clutter/x11/clutter-x11.h>
-#endif
 #include <gio/gio.h>
 #ifdef USE_CLUTTER_GST
 #include <clutter-gst/clutter-gst.h>
@@ -40,6 +37,9 @@
 #endif
 #include <stdlib.h>
 #include <string.h>
+
+#define DEFAULT_WIDTH (800)
+#define DEFAULT_HEIGHT (600)
 
 void cairo_renderer_unset_cr (PinPointRenderer *pp_renderer);
 
@@ -87,16 +87,15 @@ static ClutterColor lightgray  = {0xdd,0xdd,0xdd,0xff};
 PinPointRenderer *pp_cairo_renderer   (void);
 #endif
 
-typedef enum _PPClutterBackend
-{
-  PP_CLUTTER_BACKEND_X11,
-  PP_CLUTTER_BACKEND_UNKNOWN
-} PPClutterBackend;
-
 typedef struct _ClutterRenderer
 {
   PinPointRenderer renderer;
+
+  GtkApplication *application;
+
   GHashTable      *bg_cache;    /* only load the same backgrounds once */
+
+  GtkWidget       *window;
   ClutterActor    *stage;
   ClutterActor    *root;
 
@@ -117,6 +116,7 @@ typedef struct _ClutterRenderer
   gboolean         autoadvance;
 
   gboolean         speaker_mode;
+  GtkWidget       *speaker_window;
   ClutterActor    *speaker_screen;
 
   gdouble          slide_start_time;
@@ -154,16 +154,11 @@ typedef struct _ClutterRenderer
 
   PinPointRenderer *cairo_renderer;
 
-  /* Proxy object for the Gnome Session Manager; used to inhibit suspend during
-   * presentations.
-   */
-  GDBusProxy       *gsm;
-  /* Token returned by the Inhibit() method; passed to Uninhibit() when we
-   * leave fullscreen to tell GSM it's free to turn the screen off now.
+  /* Token returned by the gtk_application_inhibit() method; passed to
+   * gtk_application_uninhibit() when we leave fullscreen to tell GSM
+   * it's free to turn the screen off now.
    */
   guint32           inhibit_cookie;
-
-  PPClutterBackend  clutter_backend;
 } ClutterRenderer;
 
 typedef struct
@@ -288,103 +283,33 @@ pp_clutter_render_adjust_background (ClutterRenderer *renderer,
   clutter_actor_set_position (data->background, bg_x, bg_y);
 }
 
-#ifdef HAVE_CLUTTER_X11
-static void pp_set_fullscreen_x11 (ClutterStage     *stage,
-                                   gboolean          fullscreen)
+static void
+pp_monitor_window_state (GtkWidget           *widget,
+                         GdkEventWindowState *event,
+                         gpointer             user_data)
 {
-  static gboolean is_fullscreen = FALSE;
-  static float old_width=640, old_height=480;
-
-  struct {
-    unsigned long flags;
-    unsigned long functions;
-    unsigned long decorations;
-    long inputMode;
-    unsigned long status;
-  } MWMHints = { 2, 0, 0, 0, 0};
-
-  Display *xdisplay = clutter_x11_get_default_display ();
-  int      xscreen  = clutter_x11_get_default_screen ();
-  Atom     wm_hints = XInternAtom(xdisplay, "_MOTIF_WM_HINTS", True);
-  Window   xwindow  = clutter_x11_get_stage_window (stage);
-
-  if (!pp_maximized)
-    return clutter_stage_set_fullscreen (stage, fullscreen);
-
-  pp_fullscreen = fullscreen;
-  if (is_fullscreen == fullscreen)
-    return;
-  is_fullscreen = fullscreen;
-
-  if (fullscreen)
-    {
-      int full_width = DisplayWidth (xdisplay, xscreen);
-      int full_height = DisplayHeight (xdisplay, xscreen)+5;
-        /* avoid being detected as fullscreen, workaround for some
-           windowmanagers  */
-      clutter_actor_get_size (CLUTTER_ACTOR (stage), &old_width, &old_height);
-
-      if (wm_hints != None)
-        XChangeProperty (xdisplay, xwindow, wm_hints, wm_hints, 32,
-                         PropModeReplace, (guchar*)&MWMHints,
-                         sizeof(MWMHints)/sizeof(long));
-      clutter_actor_set_size (CLUTTER_ACTOR (stage), full_width, full_height);
-      XMoveResizeWindow (xdisplay, xwindow,
-                         0, 0, full_width, full_height);
-    }
-  else
-    {
-      MWMHints.decorations = 7;
-      if (wm_hints != None )
-        XChangeProperty (xdisplay, xwindow, wm_hints, wm_hints, 32,
-                         PropModeReplace, (guchar*)&MWMHints,
-                         sizeof(MWMHints)/sizeof(long));
-      clutter_stage_set_fullscreen (stage, FALSE);
-      clutter_actor_set_size (CLUTTER_ACTOR (stage), old_width, old_height);
-    }
+  gboolean fullscreen = (event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0;
+  g_object_set_data (G_OBJECT (widget),
+                     "fullscreen-state", GUINT_TO_POINTER (fullscreen));
 }
-
-static gboolean pp_get_fullscreen_x11 (ClutterStage *stage)
-{
-  if (!pp_maximized)
-    return clutter_stage_get_fullscreen (stage);
-  return pp_fullscreen;
-}
-#endif
 
 static void
-pp_set_fullscreen (ClutterRenderer  *renderer,
-                   ClutterStage     *stage,
-                   gboolean          fullscreen)
+pp_set_fullscreen (ClutterRenderer *renderer,
+                   GtkWindow       *window,
+                   gboolean         fullscreen)
 {
-  switch (renderer->clutter_backend)
-    {
-#ifdef HAVE_CLUTTER_X11
-    case PP_CLUTTER_BACKEND_X11:
-      pp_set_fullscreen_x11 (stage, fullscreen);
-      break;
-#endif
-
-    default:
-      clutter_stage_set_fullscreen (stage, fullscreen);
-      break;
-    }
+  if (fullscreen)
+    gtk_window_fullscreen (window);
+  else
+    gtk_window_unfullscreen (window);
 }
 
 static gboolean
 pp_get_fullscreen (ClutterRenderer *renderer,
-                   ClutterStage    *stage)
+                   GtkWindow       *window)
 {
-  switch (renderer->clutter_backend)
-    {
-#ifdef HAVE_CLUTTER_X11
-    case PP_CLUTTER_BACKEND_X11:
-      return pp_get_fullscreen_x11 (stage);
-#endif
-
-    default:
-      return clutter_stage_get_fullscreen (stage);
-    }
+  return GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (window),
+                                              "fullscreen-state"));
 }
 
 static void
@@ -512,7 +437,8 @@ static gboolean stage_motion (ClutterActor *actor,
   clutter_stage_show_cursor (CLUTTER_STAGE (actor));
   hide_cursor = g_timeout_add (500, hide_cursor_cb, actor);
 
-  if (!pp_get_fullscreen (renderer, CLUTTER_STAGE (actor)))
+  if (!pp_get_fullscreen (renderer,
+                          GTK_WINDOW (((ClutterRenderer *)renderer)->window)))
     return FALSE;
 
   clutter_actor_get_size (CLUTTER_RENDERER (renderer)->stage,
@@ -579,7 +505,7 @@ play_pause (ClutterActor *actor,
             gpointer      data)
 {
   ClutterRenderer *renderer = CLUTTER_RENDERER (data);
-  if (!renderer->speaker_screen) {
+  if (!renderer->speaker_window) {
     return TRUE;
   }
   if (renderer->timer_paused)
@@ -721,11 +647,25 @@ speaker_screen_deleted (ClutterActor *actor,
 static void
 clutter_renderer_init_speaker_screen (ClutterRenderer *renderer)
 {
+  GtkWidget *embed;
 
-  renderer->speaker_screen = clutter_stage_new ();
-  clutter_stage_set_title(CLUTTER_STAGE(renderer->speaker_screen), "Pinpoint speaker screen");
+  renderer->speaker_window = g_object_new (GTK_TYPE_WINDOW,
+                                           "type", GTK_WINDOW_TOPLEVEL,
+                                           "hide-titlebar-when-maximized", TRUE,
+                                           "resizable", TRUE,
+                                           "title", "Pinpoint speaker screen",
+                                           "default-width", DEFAULT_WIDTH,
+                                           "default-height", DEFAULT_HEIGHT,
+                                           NULL);
+  gtk_application_add_window (renderer->application,
+                              GTK_WINDOW (renderer->speaker_window));
+  g_signal_connect (renderer->speaker_window, "window-state-event",
+                    G_CALLBACK (pp_monitor_window_state), NULL);
+  embed = gtk_clutter_embed_new ();
+  gtk_container_add (GTK_CONTAINER (renderer->speaker_window),
+                     embed);
 
-
+  renderer->speaker_screen = gtk_clutter_embed_get_stage (GTK_CLUTTER_EMBED (embed));
 
   renderer->speaker_notes = g_object_new (CLUTTER_TYPE_TEXT,
                                 "x", 10.0,
@@ -866,7 +806,6 @@ clutter_renderer_init_speaker_screen (ClutterRenderer *renderer)
 
   clutter_actor_set_background_color (renderer->speaker_screen, &black);
   clutter_actor_set_background_color (renderer->speaker_screen, &black);
-  clutter_stage_set_user_resizable (CLUTTER_STAGE (renderer->speaker_screen), TRUE);
 
 
   renderer->speaker_preview_bar = pp_rectangle_new_with_color (&lightgray);
@@ -917,16 +856,20 @@ clutter_renderer_init_speaker_screen (ClutterRenderer *renderer)
   g_signal_connect (renderer->speaker_next, "button-press-event",
                     G_CALLBACK (go_next), renderer);
 
-  g_signal_connect (renderer->speaker_screen, "delete-event",
+  g_signal_connect (renderer->speaker_window, "delete-event",
                     G_CALLBACK (speaker_screen_deleted), renderer);
+
+  gtk_widget_show_all (embed);
 }
 
 static gboolean
-stage_deleted (ClutterStage *stage,
-               ClutterEvent *event,
-               gpointer      user_data)
+window_deleted (ClutterStage *stage,
+                ClutterEvent *event,
+                gpointer      user_data)
 {
-  clutter_main_quit ();
+  ClutterRenderer *renderer = CLUTTER_RENDERER (user_data);
+
+  g_application_quit (G_APPLICATION (renderer->application));
 
   return TRUE;
 }
@@ -938,11 +881,32 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
   ClutterRenderer *renderer = CLUTTER_RENDERER (pp_renderer);
   GFileMonitor *monitor;
   ClutterActor *stage;
-  GDBusConnection *session_bus;
-  ClutterBackend *backend;
+  GtkWidget *embed;
 
-  renderer->stage = stage = clutter_stage_new ();
-  clutter_stage_set_title(CLUTTER_STAGE(stage), "Pinpoint presentation");
+  renderer->application = gtk_application_new ("org.gnome.Pinpoint",
+                                               G_APPLICATION_NON_UNIQUE);
+  g_application_register (G_APPLICATION (renderer->application), NULL, NULL);
+
+  renderer->window = g_object_new (GTK_TYPE_WINDOW,
+                                   "type", GTK_WINDOW_TOPLEVEL,
+                                   "hide-titlebar-when-maximized", TRUE,
+                                   "resizable", TRUE,
+                                   "title", "Pinpoint presentation",
+                                   "default-width", DEFAULT_WIDTH,
+                                   "default-height", DEFAULT_HEIGHT,
+                                   NULL);
+  gtk_application_add_window (renderer->application,
+                              GTK_WINDOW (renderer->window));
+  g_signal_connect (renderer->window, "window-state-event",
+                    G_CALLBACK (pp_monitor_window_state), NULL);
+  g_signal_connect (renderer->window, "delete-event",
+                    G_CALLBACK (window_deleted), renderer);
+
+  embed = gtk_clutter_embed_new ();
+  gtk_container_add (GTK_CONTAINER (renderer->window), embed);
+  gtk_window_set_focus (GTK_WINDOW (renderer->window), embed);
+
+  renderer->stage = stage = gtk_clutter_embed_get_stage (GTK_CLUTTER_EMBED (embed));
   renderer->root = clutter_actor_new ();
   renderer->curtain = pp_rectangle_new_with_color (&black);
   renderer->rest_y = STARTPOS;
@@ -953,15 +917,6 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
   renderer->shading = pp_rectangle_new_with_color (&black);
   renderer->commandline_shading = pp_rectangle_new_with_color (&black);
   renderer->commandline = clutter_text_new ();
-
-  /* Clutter doesn't seem to have a good way to infer which backend it
-     is using so we'll try to guess from the name of the backend
-     class */
-  backend = clutter_get_default_backend ();
-  if (strcmp (G_OBJECT_TYPE_NAME (backend), "ClutterBackendX11") == 0)
-    renderer->clutter_backend = PP_CLUTTER_BACKEND_X11;
-  else
-    renderer->clutter_backend = PP_CLUTTER_BACKEND_UNKNOWN;
 
   clutter_actor_set_size (renderer->curtain, 10000, 10000);
   clutter_actor_hide (renderer->curtain);
@@ -987,12 +942,9 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
   if (pp_speakermode)
     toggle_speaker_screen (renderer);
 
-  clutter_actor_show (stage);
-
+  gtk_widget_show_all (renderer->window);
 
   clutter_actor_set_background_color (stage, &black);
-  g_signal_connect (stage, "delete-event",
-                    G_CALLBACK (stage_deleted), renderer);
   g_signal_connect (stage, "key-press-event",
                     G_CALLBACK (key_pressed), renderer);
   g_signal_connect (stage, "button-press-event",
@@ -1021,10 +973,8 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
   g_signal_connect (renderer->commandline, "notify::width",
                     G_CALLBACK (commandline_notify_cb), renderer);
 
-  clutter_stage_set_user_resizable (CLUTTER_STAGE (stage), TRUE);
-
   if (pp_fullscreen) {
-    pp_set_fullscreen (renderer, CLUTTER_STAGE (stage), TRUE);
+    pp_set_fullscreen (renderer, GTK_WINDOW (renderer->window), TRUE);
     pp_inhibit (renderer, pp_fullscreen);
   }
 
@@ -1042,22 +992,6 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
 
   renderer->cairo_renderer = pp_cairo_renderer ();
   renderer->cairo_renderer->init (renderer->cairo_renderer, pinpoint_file);
-
-  session_bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
-  if (session_bus != NULL)
-    {
-      renderer->gsm = g_dbus_proxy_new_sync (session_bus,
-                                             G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES |
-                                             G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS |
-                                             G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
-                                             NULL,
-                                             "org.gnome.SessionManager",
-                                             "/org/gnome/SessionManager",
-                                             "org.gnome.SessionManager",
-                                             NULL,
-                                             NULL);
-      g_clear_object (&session_bus);
-    }
 }
 
 static gboolean update_speaker_screen (ClutterRenderer *renderer);
@@ -1073,7 +1007,7 @@ clutter_renderer_run (PinPointRenderer *pp_renderer)
   renderer->total_seconds = point_defaults->duration * 60;
 
   g_timeout_add (15, (GSourceFunc)update_speaker_screen, renderer);
-  clutter_main ();
+  g_application_run (G_APPLICATION (renderer->application), 0, NULL);
 }
 
 static void
@@ -1083,7 +1017,6 @@ clutter_renderer_finalize (PinPointRenderer *pp_renderer)
 
   clutter_actor_destroy (renderer->stage);
   g_hash_table_unref (renderer->bg_cache);
-  g_clear_object (&renderer->gsm);
 }
 
 static ClutterActor *
@@ -1381,17 +1314,17 @@ static void end_of_presentation (ClutterRenderer *renderer)
 static void
 toggle_speaker_screen (ClutterRenderer *renderer)
 {
-  if (!renderer->speaker_screen)
+  if (!renderer->speaker_window)
     clutter_renderer_init_speaker_screen (renderer);
   if (renderer->speaker_mode)
     {
       renderer->speaker_mode = FALSE;
-      clutter_actor_hide (renderer->speaker_screen);
+      gtk_widget_hide (renderer->speaker_window);
     }
   else
     {
       renderer->speaker_mode = TRUE;
-      clutter_actor_show (renderer->speaker_screen);
+      gtk_widget_show_all (renderer->speaker_window);
     }
 }
 
@@ -1399,59 +1332,20 @@ static void
 pp_inhibit (ClutterRenderer *renderer,
             gboolean         fullscreen)
 {
-#if HAVE_CLUTTER_X11
-  if (renderer->clutter_backend != PP_CLUTTER_BACKEND_X11)
-    return;
-
-  /* Hey maybe we don't have D-Bus. */
-  if (renderer->gsm == NULL)
-    return;
-
   if (fullscreen)
     {
-      GVariant *args = g_variant_new ("(susu)",
-                                      "Pinpoint",
-                                      clutter_x11_get_stage_window (
-                                          CLUTTER_STAGE (renderer->stage)),
-                                      "Presenting some blingin' slides",
-                                      /* The flag '8' means "Inhibit the
-                                       * session being marked as idle", as
-                                       * opposed to logging out, user
-                                       * switching, or suspending.
-                                       */
-                                      8);
-      GVariant *ret = g_dbus_proxy_call_sync (renderer->gsm,
-                                              "Inhibit",
-                                              args,
-                                              G_DBUS_CALL_FLAGS_NONE,
-                                              -1,
-                                              NULL,
-                                              NULL);
-
-      if (ret != NULL)
-        {
-          if (g_variant_is_of_type (ret, G_VARIANT_TYPE ("(u)")))
-            g_variant_get (ret, "(u)", &renderer->inhibit_cookie);
-
-          g_variant_unref (ret);
-        }
-      /* Bleh, maybe this is an older version of Gnome where it was the
-       * screensaver which had the inhibition API.
-       */
+      renderer->inhibit_cookie =
+        gtk_application_inhibit (renderer->application,
+                                 GTK_WINDOW (renderer->window),
+                                 GTK_APPLICATION_INHIBIT_IDLE,
+                                 "Presenting some blingin' slides");
     }
   else if (renderer->inhibit_cookie != 0)
     {
-      g_dbus_proxy_call_sync (renderer->gsm,
-                              "Uninhibit",
-                              g_variant_new ("(u)", renderer->inhibit_cookie),
-                              G_DBUS_CALL_FLAGS_NONE,
-                              -1,
-                              NULL,
-                              NULL);
+      gtk_application_uninhibit (renderer->application,
+                                 renderer->inhibit_cookie);
       renderer->inhibit_cookie = 0;
     }
-  /* else I guess Inhibit() failed. */
-#endif /* HAVE_CLUTTER_X11 */
 }
 
 static gboolean
@@ -1477,17 +1371,17 @@ key_pressed (ClutterActor    *actor,
       case CLUTTER_Escape:
       case CLUTTER_Q:
       case CLUTTER_q:
-        clutter_main_quit ();
+        g_application_quit (G_APPLICATION (renderer->application));
         break;
       case CLUTTER_F1:
         {
           gboolean was_fullscreen =
             pp_get_fullscreen (renderer,
-                               CLUTTER_STAGE (renderer->stage));
+                               GTK_WINDOW (renderer->window));
           toggle_speaker_screen (renderer);
-          if (renderer->speaker_mode && renderer->speaker_screen)
+          if (renderer->speaker_mode && renderer->speaker_window)
             pp_set_fullscreen (renderer,
-                               CLUTTER_STAGE (renderer->speaker_screen),
+                               GTK_WINDOW (renderer->speaker_window),
                                was_fullscreen);
         }
         break;
@@ -1503,13 +1397,13 @@ key_pressed (ClutterActor    *actor,
         {
           gboolean was_fullscreen =
             pp_get_fullscreen (renderer,
-                               CLUTTER_STAGE (renderer->stage));
+                               GTK_WINDOW (renderer->window));
           pp_set_fullscreen (renderer,
-                             CLUTTER_STAGE (renderer->stage),
+                             GTK_WINDOW (renderer->window),
                              !was_fullscreen);
-          if (renderer->speaker_mode && renderer->speaker_screen)
+          if (renderer->speaker_mode && renderer->speaker_window)
             pp_set_fullscreen (renderer,
-                               CLUTTER_STAGE (renderer->speaker_screen),
+                               GTK_WINDOW (renderer->speaker_window),
                                !was_fullscreen);
 
           pp_inhibit (renderer, !was_fullscreen);

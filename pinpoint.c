@@ -225,10 +225,9 @@ main (int    argc,
         }
     }
 
+  gtk_clutter_init (&argc, &argv);
 #ifdef USE_CLUTTER_GST
   clutter_gst_init (&argc, &argv);
-#else
-  clutter_init (&argc, &argv);
 #endif
 #ifdef USE_DAX
   dax_init (&argc, &argv);
