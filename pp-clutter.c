@@ -1310,9 +1310,8 @@ static void end_of_presentation (ClutterRenderer *renderer)
     toggle_autoadvance (NULL, NULL, renderer);
 }
 
-
-static void
-toggle_speaker_screen (ClutterRenderer *renderer)
+static gboolean
+toggle_speaker_screen_internal (ClutterRenderer *renderer)
 {
   if (!renderer->speaker_window)
     clutter_renderer_init_speaker_screen (renderer);
@@ -1326,6 +1325,18 @@ toggle_speaker_screen (ClutterRenderer *renderer)
       renderer->speaker_mode = TRUE;
       gtk_widget_show_all (renderer->speaker_window);
     }
+  return FALSE;
+}
+
+static void
+toggle_speaker_screen (ClutterRenderer *renderer)
+{
+  /* Because of the complex interaction between Clutter & GTK+, we
+   * need to break out the event processing chain. This timeout ensure
+   * we don't process an event in each framework within the same
+   * call stack.
+   */
+  g_timeout_add (0, (GSourceFunc) toggle_speaker_screen_internal, renderer);
 }
 
 static void
