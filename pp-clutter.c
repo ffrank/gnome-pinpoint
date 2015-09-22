@@ -895,6 +895,8 @@ clutter_renderer_init (PinPointRenderer   *pp_renderer,
                                    "default-width", DEFAULT_WIDTH,
                                    "default-height", DEFAULT_HEIGHT,
                                    NULL);
+  g_signal_connect_swapped (renderer->application, "activate",
+                            G_CALLBACK (gtk_window_present), renderer->window);
   gtk_application_add_window (renderer->application,
                               GTK_WINDOW (renderer->window));
   g_signal_connect (renderer->window, "window-state-event",
@@ -1015,7 +1017,9 @@ clutter_renderer_finalize (PinPointRenderer *pp_renderer)
 {
   ClutterRenderer *renderer = CLUTTER_RENDERER (pp_renderer);
 
-  clutter_actor_destroy (renderer->stage);
+  gtk_widget_destroy (renderer->window);
+  gtk_widget_destroy (renderer->speaker_window);
+
   g_hash_table_unref (renderer->bg_cache);
 }
 
