@@ -1,6 +1,6 @@
 m4_define(pinpoint_major_version, 0)
 m4_define(pinpoint_minor_version, 1)
-m4_define(pinpoint_micro_version, 7)
+m4_define(pinpoint_micro_version, 8)
 
 m4_define([pinpoint_version],
           [pinpoint_major_version.pinpoint_minor_version.pinpoint_micro_version])

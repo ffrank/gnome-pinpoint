@@ -1,4 +1,10 @@
-Pinpoint 0.1.6 - Bodean's - 2015-07-127
+Pinpoint 0.1.8 - Burrito Tuesday - 2015-09-22
+
+- Make pinpoint work on Wayland (includes depending on Gtk+ to have window
+  decorations)
+- Remove more deprecation warnings (still so many left)
+
+Pinpoint 0.1.6 - Bodean's - 2015-07-27
 
 - --ignore-comments to generate slides without comments
 - Switched to a more recent version of GStreamer
