@@ -32,6 +32,20 @@ PINPOINT_DEPS="clutter-gtk-1.0 >= 1.6 clutter-1.0 >= 1.23.7 gio-2.0 >= 2.26 cair
 AS_COMPILER_FLAGS([MAINTAINER_CFLAGS], [-Wall])
 AC_SUBST(MAINTAINER_CFLAGS)
 
+# Deprecation warnings
+AC_ARG_ENABLE([deprecation-warnings],
+              [AS_HELP_STRING([--enable-deprecation-warning=@<:@no/yes@:>@],
+                              [Whether to compile with deprecation warnings @<:@default=]no[@:>@])],
+              [],
+              [enable_deprecation_warnings=no])
+
+AS_CASE([$enable_deprecation_warnings],
+        [no], [DEPRECATED_CFLAGS="-DCLUTTER_DISABLE_DEPRECATION_WARNINGS"],
+        [yes], [DEPRECATED_CFLAGS=""],
+        [AC_MSG_ERROR([Unknown argument for --enable-deprecation-warnings])]
+)
+AC_SUBST([DEPRECATED_CFLAGS])
+
 # PDF output support
 AC_ARG_ENABLE([pdf],
 	      [AS_HELP_STRING([--enable-pdf=@<:no/auto/yes:>@],
@@ -128,8 +142,9 @@ echo "Pinpoint"
 
 echo""
 echo " • General"
-echo "       prefix: ${prefix}"
-echo "       cflags: ${MAINTAINER_CFLAGS}"
+echo "       prefix:   ${prefix}"
+echo "       cflags:   ${MAINTAINER_CFLAGS}"
+echo "       warnings: ${enable_deprecation_warnings}"
 
 echo ""
 echo " • Slides' background"
