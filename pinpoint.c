@@ -224,16 +224,6 @@ main (int    argc,
         }
     }
 
-  if (!gtk_clutter_init (&argc, &argv))
-    return EXIT_FAILURE;
-#ifdef USE_CLUTTER_GST
-  if (!clutter_gst_init (&argc, &argv))
-    return EXIT_FAILURE;
-#endif
-#ifdef USE_DAX
-  dax_init (&argc, &argv);
-#endif
-
   /* select the cairo renderer if we have requested pdf output */
   if (pp_output_filename && g_str_has_suffix (pp_output_filename, ".pdf"))
     {
@@ -246,6 +236,19 @@ main (int    argc,
       return EXIT_FAILURE;
 #endif
     }
+  else
+    {
+      if (!gtk_clutter_init (&argc, &argv))
+        return EXIT_FAILURE;
+#ifdef USE_CLUTTER_GST
+      if (!clutter_gst_init (&argc, &argv))
+        return EXIT_FAILURE;
+#endif
+    }
+#ifdef USE_DAX
+  dax_init (&argc, &argv);
+#endif
+
 
   if (!pinfile)
     pp_rehearse = FALSE;
